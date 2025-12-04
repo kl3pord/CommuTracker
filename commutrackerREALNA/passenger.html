@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Passenger Booking</title>
+<style>
+body { margin:0; font-family: Arial,sans-serif; background:#d7d5d1; }
+.container { max-width: 900px; margin: 40px auto; padding:20px; background:#8e8a8a; border-radius:12px; box-shadow:0 4px 12px rgba(10, 10, 10, 0.1);}
+h2 { text-align:center; color:#151618; }
+.routes { display:flex; gap:10px; justify-content:center; margin-bottom:20px;}
+.route-btn { padding:12px 18px; background:#040505; color:#fff; border:none; border-radius:8px; cursor:pointer; font-size:15px; transition:0.2s;}
+.route-btn:hover { opacity:0.85;}
+table { width:100%; border-collapse:collapse; margin-top:10px; }
+th { background:#151516; color:#fff; padding:10px; }
+td { padding:10px; border-bottom:1px solid #ddd; text-align:center; cursor:pointer; }
+.jeep-name { font-weight:bold; color:#001f3f; }
+#bookingPanel { display:none; margin-top:20px; padding:15px; background:#e6f0ff; border:1px solid #020202; border-radius:10px; }
+#bookingSummary { margin-top:20px; }
+.booking-card { background:#f0f8ff; border:1px solid #001f3f; border-radius:10px; padding:15px; margin-bottom:10px; }
+.btn { padding:8px 16px; border-radius:6px; cursor:pointer; background:#07090b; color:white; border:none; margin-top:8px; width:100%; }
+input, select { padding:8px; width:100%; border-radius:6px; border:1px solid #ccc; margin-top:4px; }
+</style>
+</head>
+<body>
+
+<div class="container">
+<h2>Select your route or destination</h2>
+
+<div class="routes">
+  <button class="route-btn" onclick="loadRoute('BATANGAS CITY - ALANGILAN')">Batangas City - Alangilan</button>
+  <button class="route-btn" onclick="loadRoute('BATANGAS CITY - GRAND TERMINAL')">Batangas City - Grand Terminal</button>
+</div>
+
+<table id="infoTable">
+<thead>
+<tr>
+<th>Jeep / Plate</th>
+<th>Driver</th>
+<th>Status</th>
+<th>ETA</th>
+<th>Seats</th>
+</tr>
+</thead>
+<tbody></tbody>
+</table>
+
+<div id="bookingPanel">
+  <h3>Booking & Fare</h3>
+  <label>Passenger Name</label>
+  <input id="passengerName" placeholder="Enter your name">
+  
+  <label>Passenger Type</label>
+  <select id="passengerType">
+    <option value="none">None</option>
+    <option value="student">Student</option>
+    <option value="pwd">PWD</option>
+    <option value="senior">Senior Citizen</option>
+    <option value="pregnant">Pregnant</option>
+  </select>
+
+  <label>Distance (km)</label>
+  <input id="fareKm" placeholder="Distance in km">
+  <label>Pickup Terminal</label>
+  <select id="pickupTerminal">
+    <option value="Main Terminal">Main Terminal</option>
+    <option value="North Terminal">North Terminal</option>
+    <option value="South Terminal">South Terminal</option>
+  </select>
+  <button id="confirmBtn" class="btn">Confirm Booking</button>
+</div>
+
+<div id="bookingSummary">
+  <h3>Last Booking</h3>
+  <div id="lastBooking"></div>
+  <button id="viewHistoryBtn" class="btn" style="background:#050505;">View Booking History</button>
+  <div id="bookingHistory" style="display:none; margin-top:10px;"></div>
+</div>
+
+</div>
+
+<script>
+function getDrivers(){ return JSON.parse(localStorage.getItem('drivers')||'[]'); }
+function getBookings(){ return JSON.parse(localStorage.getItem('passengerBookings')||'[]'); }
+function saveBookings(b){ localStorage.setItem('passengerBookings', JSON.stringify(b)); }
+
+let selectedDriver = null;
+let currentRoute = null;
+
+function loadRoute(routeName){
+  currentRoute = routeName;
+  const tbody = document.querySelector("#infoTable tbody");
+  tbody.innerHTML = "";
+  const drivers = getDrivers().filter(d=>d.route===routeName && d.seats>0);
+  if(drivers.length===0){ 
+    tbody.innerHTML='<tr><td colspan="5">No available jeeps at the moment.</td></tr>'; 
+    return;
+  }
+  drivers.forEach(d=>{
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td class="jeep-name">${d.plate}</td><td>${d.driverName}</td><td>${d.status||'Active'}</td><td>${d.eta}</td><td>${d.seats}</td>`;
+    tr.addEventListener('click', ()=>selectDriver(d));
+    tbody.appendChild(tr);
+  });
+}
+
+function selectDriver(driver){
+  selectedDriver = driver;
+  document.getElementById('bookingPanel').style.display='block';
+  document.getElementById('fareKm').value='';
+  document.getElementById('passengerName').value='';
+  document.getElementById('passengerType').value='none';
+  document.getElementById('pickupTerminal').value='Main Terminal';
+}
+
+// Confirm Booking
+document.getElementById('confirmBtn').addEventListener('click', ()=>{
+  const passengerName = document.getElementById('passengerName').value.trim();
+  if(!passengerName){ alert('Enter your name'); return; }
+  if(!selectedDriver){ alert('Select a jeep first'); return; }
+
+  const km = parseFloat(document.getElementById('fareKm').value);
+  if(isNaN(km) || km<=0){ alert('Enter valid distance'); return; }
+
+  const type = document.getElementById('passengerType').value;
+  let baseFare = 13;
+  let discounted = false;
+  let discountAmount = 0;
+
+  if(type==='student'||type==='pwd'||type==='senior'||type==='pregnant'){
+    baseFare = 11;
+    discounted = true;
+  }
+
+  let fare = km <=4.5 ? baseFare : baseFare + Math.ceil(km-4.5)*1.25;
+  if(discounted) discountAmount = 13 - baseFare;
+
+  // Update driver seats
+  let drivers = getDrivers();
+  const idx = drivers.findIndex(d=>d.plate===selectedDriver.plate);
+  if(idx>=0){ drivers[idx].seats -=1; if(drivers[idx].seats<0) drivers[idx].seats=0; localStorage.setItem('drivers', JSON.stringify(drivers)); }
+
+  const booking = {
+    id: Date.now(),
+    passengerName,
+    passengerType:type,
+    discountAmount,
+    driverName: selectedDriver.driverName,
+    route:selectedDriver.route,
+    distance:km,
+    fare:fare.toFixed(2),
+    eta:selectedDriver.eta,
+    seatsLeft:drivers[idx]?.seats,
+    plate:selectedDriver.plate,
+    pickupTerminal:document.getElementById('pickupTerminal').value
+  };
+
+  let allBookings = getBookings();
+  allBookings.push({...booking, processed:false});
+  saveBookings(allBookings);
+
+  document.getElementById('bookingPanel').style.display='none';
+  renderLastBooking();
+  loadRoute(currentRoute);
+});
+
+function renderLastBooking(){
+  const lastBookingDiv = document.getElementById('lastBooking');
+  const bookings = getBookings();
+  if(bookings.length===0){ lastBookingDiv.innerHTML='<p>No bookings yet.</p>'; return; }
+  const last = bookings[bookings.length-1];
+  lastBookingDiv.innerHTML = `<div class="booking-card">
+    <strong>Passenger:</strong> ${last.passengerName}<br>
+    <strong>Passenger Type:</strong> ${last.passengerType}<br>
+    <strong>Discount Applied:</strong> ₱${last.discountAmount}<br>
+    <strong>Driver:</strong> ${last.driverName}<br>
+    <strong>Route:</strong> ${last.route}<br>
+    <strong>Distance:</strong> ${last.distance} km<br>
+    <strong>Fare:</strong> ₱${last.fare}<br>
+    <strong>ETA:</strong> ${last.eta} min<br>
+    <strong>Seats left:</strong> ${last.seatsLeft}<br>
+    <strong>Plate:</strong> ${last.plate}<br>
+    <strong>Pickup Terminal:</strong> ${last.pickupTerminal}</div>`;
+}
+
+// View Booking History
+document.getElementById('viewHistoryBtn').addEventListener('click', ()=>{
+  const historyDiv = document.getElementById('bookingHistory');
+  const bookings = getBookings();
+  if(bookings.length===0){ historyDiv.innerHTML='<p>No booking history.</p>'; historyDiv.style.display='block'; return; }
+  historyDiv.innerHTML = '';
+  bookings.forEach(b=>{
+    const card = document.createElement('div');
+    card.className='booking-card';
+    card.innerHTML = `<strong>Passenger:</strong> ${b.passengerName}<br>
+      <strong>Passenger Type:</strong> ${b.passengerType}<br>
+      <strong>Discount Applied:</strong> ₱${b.discountAmount}<br>
+      <strong>Driver:</strong> ${b.driverName}<br>
+      <strong>Route:</strong> ${b.route}<br>
+      <strong>Distance:</strong> ${b.distance} km<br>
+      <strong>Fare:</strong> ₱${b.fare}<br>
+      <strong>ETA:</strong> ${b.eta} min<br>
+      <strong>Seats left:</strong> ${b.seatsLeft}<br>
+      <strong>Plate:</strong> ${b.plate}<br>
+      <strong>Pickup Terminal:</strong> ${b.pickupTerminal}`;
+    historyDiv.appendChild(card);
+  });
+  historyDiv.style.display='block';
+});
+
+// Live updates every 1 sec
+setInterval(()=>{
+  if(currentRoute) loadRoute(currentRoute);
+
+  // Update ETA from driver for each booking
+  let bookings = getBookings();
+  bookings.forEach(b=>{
+    const driver = getDrivers().find(d => d.plate === b.plate);
+    if(driver){ b.eta = driver.eta; }
+  });
+  saveBookings(bookings);
+
+  renderLastBooking();
+},1000);
+
+// Initial last booking render
+renderLastBooking();
+</script>
+
+</body>
+</html>

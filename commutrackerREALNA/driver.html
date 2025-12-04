@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Driver Update</title>
+<style>
+body { font-family:sans-serif; background:#c6c4bf; margin:0; color:#000000; }
+.container { max-width:700px; margin:40px auto; padding:20px; background:#848282; border-radius:12px; box-shadow:0 4px 12px rgba(0, 0, 0, 0.1); }
+.card { background:#5a4646; padding:20px; border-radius:12px; box-shadow:0 4px 12px rgba(0,0,0,0.05); margin-bottom:20px; }
+.btn { padding:10px 16px; border-radius:6px; cursor:pointer; background:#1c1f21; color:rgb(251, 251, 251); border:none; margin-top:10px; width:100%; }
+input, select { padding:8px; margin:6px 0; width:100%; border-radius:6px; border:1px solid #ccc; }
+table { width:100%; border-collapse:collapse; margin-top:15px; }
+th, td { padding:10px; border-bottom:1px solid #f1f1f1; text-align:center; }
+th { background:#131414; color:rgb(233, 224, 224); }
+.driver-box { padding:12px; border-radius:8px; margin-bottom:10px; border:1px solid #001f3f; background:#949a9f; display:flex; justify-content:space-between; align-items:center; }
+h2,h3,h4 { color:#252e38; margin-bottom:10px; }
+</style>
+</head>
+<body>
+
+<div class="container" id="loginContainer">
+  <h2>Driver Login</h2>
+  <p>Are you a new driver?</p>
+  <button class="btn" onclick="showSignup()">Yes, Sign Up</button>
+  <button class="btn" onclick="showLogin()">No, Login</button>
+</div>
+
+<div class="container" id="signupContainer" style="display:none;">
+  <h3>Sign Up</h3>
+  <input id="newPlate" placeholder="Plate Number (e.g. 123-ABC)">
+  <input id="driverName" placeholder="Your Name">
+  <input id="newPassword" type="password" placeholder="Password">
+  <select id="route">
+    <option value="">Select Route</option>
+    <option value="BATANGAS CITY - ALANGILAN">BATANGAS CITY - ALANGILAN</option>
+    <option value="BATANGAS CITY - GRAND TERMINAL">BATANGAS CITY - GRAND TERMINAL</option>
+  </select>
+  <input id="capacity" type="number" min="1" placeholder="Max Capacity">
+  <button class="btn" onclick="signup()">Sign Up</button>
+</div>
+
+<div class="container" id="loginForm" style="display:none;">
+  <h3>Login</h3>
+  <input id="plateLogin" placeholder="Plate Number">
+  <input id="passwordLogin" type="password" placeholder="Password">
+  <button class="btn" onclick="login()">Login</button>
+</div>
+
+<div class="container" id="driverContainer" style="display:none;">
+  <h3>Driver Update Panel</h3>
+  <input id="location" placeholder="Current location">
+  <input id="seats" type="number" min="0" placeholder="Seats available">
+  <input id="eta" type="number" min="1" placeholder="ETA to terminal (minutes)">
+  <button id="submitDriver" class="btn">Submit / Update Info</button>
+
+  <h4>Your Info</h4>
+  <div id="driverList"></div>
+
+  <h4>Passengers Onboard / Reservations</h4>
+  <table id="passengerTable">
+    <thead>
+      <tr>
+        <th>Passenger Name</th>
+        <th>Pickup Terminal</th>
+        <th>Passenger Type</th>
+        <th>Discount</th>
+        <th>Fare</th>
+        <th>ETA</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <div id="totalFare" style="margin-top:10px; font-weight:bold;">Total Fare: ₱0</div>
+</div>
+
+<script>
+// LocalStorage helpers
+function getDrivers(){ return JSON.parse(localStorage.getItem('drivers')||'[]'); }
+function saveDrivers(list){ localStorage.setItem('drivers', JSON.stringify(list)); }
+function getBookings(){ return JSON.parse(localStorage.getItem('passengerBookings')||'[]'); }
+function saveBookings(b){ localStorage.setItem('passengerBookings', JSON.stringify(b)); }
+
+// Show signup/login forms
+function showSignup(){ document.getElementById('loginContainer').style.display='none'; document.getElementById('signupContainer').style.display='block'; }
+function showLogin(){ document.getElementById('loginContainer').style.display='none'; document.getElementById('loginForm').style.display='block'; }
+
+// Sign Up
+function signup(){
+  const plate=document.getElementById('newPlate').value.trim();
+  const name=document.getElementById('driverName').value.trim();
+  const pass=document.getElementById('newPassword').value.trim();
+  const route=document.getElementById('route').value;
+  const cap=parseInt(document.getElementById('capacity').value);
+
+  if(!plate || !name || !pass || !route || !cap){ alert('Fill all fields'); return; }
+
+  let drivers=getDrivers();
+  if(drivers.find(d=>d.plate===plate)){ alert('Plate already registered'); return; }
+
+  drivers.push({plate,driverName:name,password:pass,route,capacity:cap,seats:cap,location:'',eta:0,status:'Active'}); 
+  saveDrivers(drivers);
+  alert('Sign up successful! Please login now.');
+  document.getElementById('signupContainer').style.display='none';
+  showLogin();
+}
+
+// Login
+function login(){
+  const plate=document.getElementById('plateLogin').value.trim();
+  const pass=document.getElementById('passwordLogin').value.trim();
+  const drivers=getDrivers();
+  const driver=drivers.find(d=>d.plate===plate && d.password===pass);
+  if(!driver){ alert('Invalid plate or password'); return; }
+
+  document.getElementById('loginForm').style.display='none';
+  document.getElementById('driverContainer').style.display='block';
+  localStorage.setItem('currentDriver', plate);
+  renderDriverSelf(plate);
+  renderPassengerTable();
+}
+
+// Render driver info
+function renderDriverSelf(plate){
+  const dv=document.getElementById('driverList');
+  dv.innerHTML='';
+  const driver=getDrivers().find(d=>d.plate===plate);
+  if(!driver){ dv.innerHTML='<p>No info yet.</p>'; return; }
+
+  const div=document.createElement('div');
+  div.className='driver-box';
+  div.innerHTML=`
+    <div class="driver-info">
+      <strong>Plate:</strong> ${driver.plate}<br>
+      <strong>Name:</strong> ${driver.driverName}<br>
+      <strong>Route:</strong> ${driver.route}<br>
+      <strong>Seats:</strong> ${driver.seats} / ${driver.capacity}<br>
+      <strong>ETA:</strong> ${driver.eta} min
+    </div>
+  `;
+  dv.appendChild(div);
+}
+
+// Update driver info
+document.getElementById('submitDriver').addEventListener('click',()=>{
+  const plate = localStorage.getItem('currentDriver');
+  if(!plate) return;
+
+  const location=document.getElementById('location').value.trim();
+  const seats=parseInt(document.getElementById('seats').value);
+  const eta=parseInt(document.getElementById('eta').value);
+
+  if(!location || isNaN(seats) || isNaN(eta)){ alert('Fill all fields correctly'); return; }
+
+  let drivers=getDrivers();
+  const idx=drivers.findIndex(d=>d.plate===plate);
+  if(idx>=0){
+    drivers[idx].location=location;
+    drivers[idx].seats=seats;
+    drivers[idx].eta=eta;
+  }
+  saveDrivers(drivers);
+  renderDriverSelf(plate);
+  renderPassengerTable();
+  alert('Updated successfully!');
+});
+
+// Render passenger table for driver
+function renderPassengerTable(){
+  const plate = localStorage.getItem('currentDriver');
+  if(!plate) return;
+  const tbody = document.querySelector('#passengerTable tbody');
+  tbody.innerHTML='';
+
+  const bookings=getBookings().filter(b=>b.plate===plate);
+  let totalFare=0;
+
+  bookings.forEach((b)=>{
+    totalFare += Number(b.fare || 0);  // sum actual fare
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${b.passengerName}</td>
+      <td>${b.pickupTerminal}</td>
+      <td>${b.passengerType}</td>
+      <td>₱${b.discountAmount || 0}</td>
+      <td>₱${b.fare || 0}</td>
+      <td>${b.eta || 'N/A'}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  document.getElementById('totalFare').textContent = `Total Fare: ₱${totalFare}`;
+}
+
+// Live update every second
+setInterval(()=>{
+  const plate = localStorage.getItem('currentDriver');
+  if(!plate) return;
+
+  let drivers=getDrivers();
+  const idx=drivers.findIndex(d=>d.plate===plate);
+  let bookings=getBookings();
+  let updated=false;
+
+  bookings.forEach(b=>{
+    if(!b.processed && b.plate===plate){
+      if(drivers[idx].seats>0){ drivers[idx].seats-=1; updated=true; }
+      b.processed=true;
+    }
+  });
+
+  if(updated){
+    saveDrivers(drivers);
+    saveBookings(bookings);
+    renderDriverSelf(plate);
+    renderPassengerTable();
+  }
+},1000);
+</script>
+
+</body>
+</html>
